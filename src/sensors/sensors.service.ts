@@ -70,7 +70,9 @@ export class SensorsService {
   ): Promise<SensorReadingDocument> {
     // ── Step 1: Determine Alert Level ──────────────────────
     // Compare the incoming value against the threshold
-    const alertLevel = this.calculateAlertLevel(dto.value, dto.threshold);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const threshold = dto.threshold ?? 0; // Use default value if undefined
+    const alertLevel = this.calculateAlertLevel(dto.value, threshold);
     // calculateAlertLevel is a private helper method defined below
 
     this.logger.log(
