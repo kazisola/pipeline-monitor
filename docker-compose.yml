@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+
+  # ─────────────────────────────────────────
+  # MongoDB — my main database
+  # Stores pipeline sensor readings, alerts, equipment data
+  # ─────────────────────────────────────────
+  mongodb:
+    image: mongo:7                        # Official MongoDB image, version 7
+    container_name: pipeline_mongo        # Name i use to reference this container
+    restart: unless-stopped               # For Auto-restart if it crashes
+    ports:
+      - "27017:27017"                     # Maps my computer's port 27017 > container's 27017
+                                          # Format is HOST:CONTAINER
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin   # Creates a root admin user on first run
+      MONGO_INITDB_ROOT_PASSWORD: secret  # Password for that admin user
+      MONGO_INITDB_DATABASE: pipeline_db  # Name of the database to create
+    volumes:
+      - mongo_data:/data/db               # Persists data even when container stops
+                                          # Without this, data is lost on restart
+
+  # ─────────────────────────────────────────
+  # Redis — my in-memory cache + message broker
+  # Used for: caching live sensor readings (super fast reads)
+  #           and as the queue backend for BullMQ (alert processing)
+  # ─────────────────────────────────────────
+  redis:
+    image: redis:7-alpine                 # Alpine = lightweight Linux, smaller image size
+    container_name: pipeline_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"                       # Redis default port
+    command: redis-server --appendonly yes  # appendonly: persist data to disk (AOF mode)
+                                            # Without this Redis is purely in-memory
+    volumes:
+      - redis_data:/data                  # Persist Redis data across restarts
+
+  # ─────────────────────────────────────────
+  # Keycloak — my OIDC identity provider
+  # This simulates enterprise SSO (Single Sign-On), since I noticed WebCreek mentioning of enterprise SSO
+  # I should maybe mention companies like ExxonMobil or Shell use systems just like this
+  # ─────────────────────────────────────────
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0  # Official Keycloak image
+    container_name: pipeline_keycloak
+    restart: unless-stopped
+    ports:
+      - "8080:8080"                        # Keycloak admin UI lives at http://localhost:8080
+    environment:
+      KEYCLOAK_ADMIN: admin                # Admin username for Keycloak console
+      KEYCLOAK_ADMIN_PASSWORD: admin       # Admin password — change in production! NOTE
+      KC_DB: dev-file                      # Use built-in file DB for dev (no extra DB needed)
+    command: start-dev                     # start-dev = development mode, no HTTPS required
+                                           # In production i'd use 'start' with TLS configured
+
+  # ─────────────────────────────────────────
+  # MongoDB Express — visual DB admin UI (dev bonus for me!)
+  # Access at http://localhost:8081 to browse my data visually
+  # Very helpful while developing :)
+  # ─────────────────────────────────────────
+  mongo-express:
+    image: mongo-express:latest
+    container_name: pipeline_mongo_express
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: admin
+      ME_CONFIG_MONGODB_ADMINPASSWORD: secret
+      ME_CONFIG_MONGODB_URL: mongodb://admin:secret@mongodb:27017/  # uses 'mongodb' not 'localhost'
+                                                                     # cz inside Docker, containers talk by SERVICE NAME
+    depends_on:
+      - mongodb                            # make sure, don't start until mongodb is ready
+
+# ─────────────────────────────────────────
+# Named volumes — Docker manages these on my system
+# They survive container restarts and removals
+# ─────────────────────────────────────────
+volumes:
+  mongo_data:   # Stores MongoDB files
+  redis_data:   # Stores Redis AOF file
