@@ -11,10 +11,6 @@ export enum SensorType {
   GAS_LEVEL = 'GAS_LEVEL', // Detects gas concentration (safety critical)
 }
 
-// ─────────────────────────────────────────────────────────────
-// AlertLevel Enum
-// How serious is the current reading?
-// ─────────────────────────────────────────────────────────────
 export enum AlertLevel {
   NORMAL = 'NORMAL', // Everything is fine
   WARNING = 'WARNING', // Getting close to danger threshold — watch it
@@ -23,7 +19,6 @@ export enum AlertLevel {
 
 @Schema({ timestamps: true })
 export class SensorReading {
-  // @Prop() decorator = this is a field in the MongoDB document
 
   @Prop({ required: true })
   sensorId: string;
@@ -86,11 +81,4 @@ export class SensorReading {
 
 export const SensorReadingSchema = SchemaFactory.createForClass(SensorReading);
 
-// ─────────────────────────────────────────────────────────────
-// SensorReadingDocument
-// This is a TypeScript type that combines:
-//   - Our SensorReading class (our custom fields)
-//   - Mongoose's Document type (._id, .save(), .populate(), etc.)
-// We use this type in our Service so TypeScript gives us autocomplete
-// ─────────────────────────────────────────────────────────────
 export type SensorReadingDocument = SensorReading & Document;

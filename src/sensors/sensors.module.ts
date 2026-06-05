@@ -24,22 +24,13 @@ import {
 @Module({
   imports: [
     // MongoDB
-    // Register our SensorReading schema with Mongoose
-    // This creates a MongoDB "model" — an object with methods like
-    // .find(), .create(), .findById(), .updateOne() etc.
-    // The string 'SensorReading' becomes the collection name: 'sensorreadings'
-    // MongoDB automatically lowercases and pluralizes it
     MongooseModule.forFeature([
       { name: SensorReading.name, schema: SensorReadingSchema },
     ]),
 
     // BullMQ Queue
-    // Register a queue named 'alerts'
-    // When a sensor reading exceeds its threshold, i'll add a job to this queue
-    // A separate worker (processor) will pick it up and handle it asynchronously
-    // "Asynchronously" = in the background, without blocking the main request
     BullModule.registerQueue({
-      name: 'alerts', // This name is how i reference the queue throughout the app
+      name: 'alerts',
     }),
   ],
 
