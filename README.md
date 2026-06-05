@@ -1,98 +1,155 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Pipeline Monitor — Backend API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+A production-grade real-time pipeline monitoring system built with NestJS, designed for Oil & Gas / Energy operations. This backend powers live sensor data collection, intelligent alert processing, and enterprise-grade authentication.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Tech Stack
 
-## Description
+| Technology | Role |
+|---|---|
+| **NestJS** | Backend framework — modular, scalable Node.js architecture |
+| **MongoDB** | Persistent storage for sensor readings and alert history |
+| **Redis** | Real-time caching (latest sensor reads) + BullMQ queue backend |
+| **BullMQ** | Async job queue for alert processing without blocking the API |
+| **Keycloak** | Enterprise OIDC identity provider — simulates real industrial SSO |
+| **Docker** | Containerized infrastructure — one command to run everything |
+| **Passport JWT** | Token validation via Keycloak's JWKS public key endpoint |
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Architecture
 
-## Project setup
-
-```bash
-$ npm install
+```
+Sensor POST /api/sensors
+        │
+        ├─► calculateAlertLevel()     Pure logic — no I/O
+        │
+        ├─► MongoDB .create()         Permanent storage
+        │
+        ├─► Redis .set() [TTL: 5min]  Cache latest reading per sensor
+        │
+        └─► if WARNING/CRITICAL
+                │
+                └─► BullMQ .add()     Fire-and-forget background job
+                            │
+                            └─► AlertsProcessor   Saves to alerts collection
 ```
 
-## Compile and run the project
-
-```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+Every protected route goes through:
+```
+Request → JwtAuthGuard → JwtStrategy → JWKS (Keycloak) → req.user → Controller
 ```
 
-## Run tests
+## Project Structure
 
-```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+```
+src/
+├── auth/
+│   ├── guards/jwt-auth.guard.ts           Protects routes — 401 if token invalid
+│   ├── strategies/jwt.strategy.ts         OIDC token validation via Keycloak JWKS
+│   └── auth.module.ts
+├── sensors/
+│   ├── dto/create-sensor-reading.dto.ts   Request validation
+│   ├── schemas/sensor-reading.schema.ts   MongoDB schema + enums
+│   ├── sensors.controller.ts              REST API routes
+│   ├── sensors.service.ts                 Business logic + Redis + BullMQ
+│   └── sensors.module.ts
+├── alerts/
+│   ├── schemas/alert.schema.ts            Alert audit log schema
+│   ├── alerts.processor.ts                BullMQ background worker
+│   └── alerts.module.ts
+├── app.module.ts                          Root module — wires everything
+└── main.ts                                Bootstrap + global pipes + CORS
 ```
 
-## Deployment
+## API Endpoints
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+| Method | Route | Auth | Description |
+|--------|-------|------|-------------|
+| `GET` | `/api/sensors/health` | ❌ Public | Health check |
+| `GET` | `/api/sensors` | ✅ JWT | List readings (paginated, filterable) |
+| `POST` | `/api/sensors` | ✅ JWT | Create sensor reading |
+| `GET` | `/api/sensors/:id/latest` | ✅ JWT | Latest reading — Redis first, MongoDB fallback |
+| `GET` | `/api/sensors/pipeline/:id/summary` | ✅ JWT | Aggregated pipeline stats |
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+### Query Parameters (GET /api/sensors)
+- `pipelineId` — filter by pipeline
+- `alertLevel` — filter by NORMAL / WARNING / CRITICAL
+- `limit` — page size (default: 50)
+- `skip` — offset for pagination
 
+## Alert Level Logic
+
+Alert level is automatically calculated on every incoming reading:
+
+| Level | Condition |
+|---|---|
+| `NORMAL` | Value < 80% of threshold |
+| `WARNING` | Value between 80–99% of threshold |
+| `CRITICAL` | Value ≥ 100% of threshold |
+
+## Getting Started
+
+### Prerequisites
+- Node.js 20+
+- Docker Desktop
+
+### 1. Clone and install
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+git clone <repo>
+cd pipeline-monitor
+npm install
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+### 2. Start infrastructure
+```bash
+docker compose up -d
+```
 
-## Resources
+This starts:
+- **MongoDB** on port `27017`
+- **Redis** on port `6379`
+- **Keycloak** on port `8080`
+- **Mongo Express** (DB UI) on port `8081`
 
-Check out a few resources that may come in handy when working with NestJS:
+### 3. Configure environment
+```bash
+cp .env.example .env
+# Fill in KEYCLOAK_CLIENT_SECRET from Keycloak admin
+```
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+### 4. Run the API
+```bash
+npm run start:dev
+```
 
-## Support
+API available at `http://localhost:3000/api`
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+### 5. Keycloak Setup
+1. Visit `http://localhost:8080` → login `admin / admin`
+2. Create realm: `pipeline`
+3. Create client: `pipeline-api` (Client Authentication ON)
+4. Add Audience mapper → Included Client Audience: `pipeline-api`
+5. Create user: `engineer1` / `Test1234!` (Temporary OFF, Email verified ON)
 
-## Stay in touch
+## Environment Variables
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+```env
+MONGODB_URI=mongodb://admin:secret@localhost:27017/pipeline_db?authSource=admin
+REDIS_HOST=localhost
+REDIS_PORT=6379
+KEYCLOAK_URL=http://localhost:8080
+KEYCLOAK_REALM=pipeline
+KEYCLOAK_CLIENT_ID=pipeline-api
+KEYCLOAK_CLIENT_SECRET=your-secret-here
+JWKS_URI=http://localhost:8080/realms/pipeline/protocol/openid-connect/certs
+PORT=3000
+```
 
-## License
+## Key Design Decisions
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+**Why cache in Redis?**
+The dashboard polls every 15 seconds. Without Redis, every poll hits MongoDB. With Redis, the latest reading is served from memory in under 1ms, with MongoDB as the fallback on cache miss. This pattern is called cache-aside.
+
+**Why async alert processing with BullMQ?**
+Under high sensor volume, handling alerts synchronously adds latency to every POST. BullMQ decouples ingestion from processing — the API stays fast, alerts are handled reliably with automatic retries and failure tracking.
+
+**Why JWKS instead of a shared secret?**
+JWKS lets NestJS verify tokens using Keycloak's public key without calling Keycloak on every request. Keys are cached locally. This is how real enterprise SSO works at scale — no central auth bottleneck.
