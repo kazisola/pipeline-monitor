@@ -1,17 +1,3 @@
-// import { Module } from '@nestjs/common';
-// import { AuthService } from './auth.service';
-
-// @Module({
-//   providers: [AuthService]
-// })
-// export class AuthModule {}
-
-// ─────────────────────────────────────────────────────────────
-// auth.module.ts
-// Bundles everything auth-related together
-// and makes the guard available to the rest of the app
-// ─────────────────────────────────────────────────────────────
-
 import { Module } from '@nestjs/common';
 import { PassportModule } from '@nestjs/passport';
 

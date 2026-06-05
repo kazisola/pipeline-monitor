@@ -1,11 +1,3 @@
-// import { Module } from '@nestjs/common';
-// import { AlertsService } from './alerts.service';
-
-// @Module({
-//   providers: [AlertsService]
-// })
-// export class AlertsModule {}
-
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bull';
 import { MongooseModule } from '@nestjs/mongoose';
